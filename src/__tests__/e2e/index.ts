@@ -12,3 +12,11 @@ export const testSuites: TestSuite[] = [
 ];
 
 export default testSuites;
+
+// Export all E2E test scenarios
+export { autoTradingScenarios } from './autotrading-scenarios.ts';
+export { liveTradingScenarios } from './liveTrading-scenarios.ts';
+export { mockTradingScenarios } from './mock-trading-scenario.ts';
+
+// Export test utilities
+export * from './test-utils.ts';

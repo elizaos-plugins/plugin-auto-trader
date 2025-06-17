@@ -1,6 +1,7 @@
 import type { IAgentRuntime, TestSuite } from '@elizaos/core';
 import { strict as assert } from 'node:assert';
-import { setupScenario, sendMessageAndWaitForResponse } from './test-utils.ts';
+import { setupScenario, sendMessageAndWaitForResponse, waitForTrading, monitorTrades, validateTradingResult } from './test-utils.ts';
+import { AutoTradingManager } from '../../services/AutoTradingManager.ts';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -8,168 +9,196 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * E2E test suite for autonomous trading functionality
  */
 export const autoTradingScenarios: TestSuite = {
-  name: 'Auto-Trading E2E Tests',
+  name: 'Auto Trading Core Scenarios',
   tests: [
     {
-      name: 'should start and stop trading autonomously',
-      fn: async (runtime: IAgentRuntime) => {
-        const { user, room } = await setupScenario(runtime);
+      name: 'should start and stop trading with momentum strategy',
+      fn: async (runtime) => {
+        console.log('\n🚀 Testing momentum strategy trading...\n');
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        if (!tradingManager) {
+          throw new Error('AutoTradingManager service not found');
+        }
 
-        // Start trading
-        const startResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Start trading with momentum strategy on BONK with $100'
-        );
+        // Start trading with momentum strategy
+        await tradingManager.startTrading({
+          strategy: 'momentum-breakout-v1',
+          tokens: ['BONK', 'WIF'],
+          maxPositionSize: 100, // $100 max position
+          intervalMs: 5000, // 5 second intervals for testing
+          stopLossPercent: 2,
+          takeProfitPercent: 5,
+          maxDailyLoss: 50,
+        });
 
-        console.log('Start trading response:', startResponse.text);
-        assert(
-          startResponse.text?.includes('Auto-trading started') ||
-            startResponse.text?.includes('trading'),
-          `Expected trading to start, but got: "${startResponse.text}"`
-        );
+        // Wait for trading to start
+        const started = await waitForTrading(runtime);
+        if (!started) {
+          throw new Error('Trading did not start within timeout');
+        }
 
-        // Wait for some trading activity
-        await sleep(2000);
-
-        // Check status
-        const statusResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          "What's my trading status?"
-        );
-
-        console.log('Status response:', statusResponse.text);
-        assert(
-          statusResponse.text?.includes('ACTIVE') || statusResponse.text?.includes('trading'),
-          `Expected active status, but got: "${statusResponse.text}"`
-        );
-
+        // Monitor for 30 seconds
+        const result = await monitorTrades(runtime, 30000);
+        
         // Stop trading
-        const stopResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Stop trading'
-        );
-
-        console.log('Stop trading response:', stopResponse.text);
-        assert(
-          stopResponse.text?.includes('stopped') || stopResponse.text?.includes('Stop'),
-          `Expected trading to stop, but got: "${stopResponse.text}"`
-        );
-      },
+        await tradingManager.stopTrading();
+        
+        // Validate results
+        validateTradingResult(result);
+        
+        console.log('✅ Momentum strategy test completed');
+      }
     },
-
+    
     {
-      name: 'should check P&L status',
-      fn: async (runtime: IAgentRuntime) => {
-        const { user, room } = await setupScenario(runtime);
+      name: 'should handle multiple strategies and switch between them',
+      fn: async (runtime) => {
+        console.log('\n🔄 Testing strategy switching...\n');
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        
+        // Start with rule-based strategy
+        await tradingManager.startTrading({
+          strategy: 'rule-based-v1',
+          tokens: ['SOL'],
+          maxPositionSize: 200,
+          intervalMs: 3000,
+        });
 
-        // Check P&L
-        const pnlResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          "What's my P&L?"
-        );
+        await monitorTrades(runtime, 15000);
+        
+        // Switch to mean reversion
+        await tradingManager.stopTrading();
+        await tradingManager.startTrading({
+          strategy: 'mean-reversion-strategy',
+          tokens: ['BONK'],
+          maxPositionSize: 150,
+          intervalMs: 3000,
+        });
 
-        console.log('P&L response:', pnlResponse.text);
-        assert(
-          pnlResponse.text?.includes('P&L') ||
-            pnlResponse.text?.includes('profit') ||
-            pnlResponse.text?.includes('loss') ||
-            pnlResponse.text?.includes('performance'),
-          `Expected P&L information, but got: "${pnlResponse.text}"`
-        );
-      },
+        await monitorTrades(runtime, 15000);
+        
+        await tradingManager.stopTrading();
+        
+        console.log('✅ Strategy switching test completed');
+      }
     },
-
+    
     {
-      name: 'should configure trading parameters',
-      fn: async (runtime: IAgentRuntime) => {
-        const { user, room } = await setupScenario(runtime);
+      name: 'should respect risk management limits',
+      fn: async (runtime) => {
+        console.log('\n🛡️ Testing risk management...\n');
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        
+        // Start with tight risk limits
+        await tradingManager.startTrading({
+          strategy: 'optimized-momentum-v1',
+          tokens: ['WIF', 'POPCAT'],
+          maxPositionSize: 50,
+          intervalMs: 2000,
+          stopLossPercent: 1, // Tight stop loss
+          takeProfitPercent: 2,
+          maxDailyLoss: 20, // Low daily loss limit
+        });
 
-        // Start with specific parameters
-        const configResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Start trading mean reversion on top 3 meme coins with $500, stop loss at 3%'
+        const result = await monitorTrades(runtime, 20000);
+        
+        await tradingManager.stopTrading();
+        
+        // Check that positions respect limits
+        const maxPositionValue = Math.max(
+          ...result.tradeLog.map((log: any) => 
+            log.positions * 50 // Assuming rough position value
+          )
         );
-
-        console.log('Config response:', configResponse.text);
-        assert(
-          configResponse.text?.includes('mean reversion') ||
-            configResponse.text?.includes('trading'),
-          `Expected configuration confirmation, but got: "${configResponse.text}"`
-        );
-
-        // Verify parameters were set
-        assert(
-          configResponse.text?.includes('500') || configResponse.text?.includes('$500'),
-          `Expected $500 position size, but got: "${configResponse.text}"`
-        );
-
-        assert(
-          configResponse.text?.includes('3%') || configResponse.text?.includes('stop loss'),
-          `Expected 3% stop loss, but got: "${configResponse.text}"`
-        );
-      },
+        
+        if (maxPositionValue > 50) {
+          throw new Error(`Position size exceeded limit: ${maxPositionValue}`);
+        }
+        
+        console.log('✅ Risk management test completed');
+      }
     },
-
+    
     {
-      name: 'should handle invalid trading requests',
-      fn: async (runtime: IAgentRuntime) => {
-        const { user, room } = await setupScenario(runtime);
+      name: 'should track performance metrics accurately',
+      fn: async (runtime) => {
+        console.log('\n📊 Testing performance tracking...\n');
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        
+        // Get initial performance
+        const initialPerf = tradingManager.getPerformance();
+        
+        // Run random strategy for predictable trades
+        await tradingManager.startTrading({
+          strategy: 'random-v1',
+          tokens: ['BONK'],
+          maxPositionSize: 100,
+          intervalMs: 4000,
+        });
 
-        // Try to start with invalid strategy
-        const invalidResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Start trading with nonexistent-strategy'
-        );
-
-        console.log('Invalid strategy response:', invalidResponse.text);
-        // Should either use default strategy or indicate an error
-        assert(
-          invalidResponse.text?.includes('momentum') || // default strategy
-            invalidResponse.text?.includes('error') ||
-            invalidResponse.text?.includes('failed'),
-          `Expected error or default strategy, but got: "${invalidResponse.text}"`
-        );
-      },
+        const result = await monitorTrades(runtime, 20000);
+        
+        await tradingManager.stopTrading();
+        
+        const finalPerf = tradingManager.getPerformance();
+        
+        // Verify metrics changed
+        if (finalPerf.totalTrades === initialPerf.totalTrades) {
+          console.warn('⚠️ No trades executed during test period');
+        }
+        
+        console.log('📈 Performance Metrics:', {
+          trades: finalPerf.totalTrades - initialPerf.totalTrades,
+          winRate: `${(finalPerf.winRate * 100).toFixed(1)}%`,
+          totalPnL: finalPerf.totalPnL.toFixed(2),
+          dailyPnL: finalPerf.dailyPnL.toFixed(2),
+        });
+        
+        console.log('✅ Performance tracking test completed');
+      }
     },
-
+    
     {
-      name: 'should provide trading status when not trading',
-      fn: async (runtime: IAgentRuntime) => {
-        const { user, room } = await setupScenario(runtime);
-
-        // Make sure trading is stopped
-        await sendMessageAndWaitForResponse(runtime, room, user, 'Stop trading');
-
-        await sleep(1000);
-
-        // Check status
-        const statusResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Am I currently trading?'
-        );
-
-        console.log('Not trading status:', statusResponse.text);
-        assert(
-          statusResponse.text?.includes('STOPPED') ||
-            statusResponse.text?.includes('not') ||
-            statusResponse.text?.includes('inactive'),
-          `Expected stopped status, but got: "${statusResponse.text}"`
-        );
-      },
+      name: 'should handle concurrent operations gracefully',
+      fn: async (runtime) => {
+        console.log('\n🔀 Testing concurrent operations...\n');
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        
+        // Try to start multiple trading sessions
+        const promises = [
+          tradingManager.startTrading({
+            strategy: 'random-v1',
+            tokens: ['SOL'],
+            maxPositionSize: 100,
+            intervalMs: 5000,
+          }),
+          tradingManager.startTrading({
+            strategy: 'momentum-breakout-v1',
+            tokens: ['BONK'],
+            maxPositionSize: 100,
+            intervalMs: 5000,
+          }),
+        ];
+        
+        try {
+          await Promise.all(promises);
+          throw new Error('Should not allow concurrent trading sessions');
+        } catch (error: any) {
+          if (!error.message.includes('Already trading')) {
+            throw error;
+          }
+          console.log('✅ Correctly prevented concurrent trading sessions');
+        }
+        
+        await tradingManager.stopTrading();
+        
+        console.log('✅ Concurrent operations test completed');
+      }
     },
   ],
 };

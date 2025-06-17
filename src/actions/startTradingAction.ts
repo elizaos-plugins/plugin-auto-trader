@@ -1,6 +1,6 @@
 import type { Action, IAgentRuntime, Memory, HandlerCallback, State } from '@elizaos/core';
 import { elizaLogger } from '@elizaos/core';
-import { AutoTradingService } from '../services/AutoTradingService.ts';
+import { AutoTradingManager } from '../services/AutoTradingManager.ts';
 import { VERIFIED_MEME_COINS } from '../config/memeCoins.ts';
 
 export const startTradingAction: Action = {
@@ -51,9 +51,9 @@ export const startTradingAction: Action = {
     callback?: HandlerCallback
   ): Promise<boolean> => {
     try {
-      const autoTradingService = runtime.getService('AutoTradingService') as AutoTradingService;
-      if (!autoTradingService) {
-        throw new Error('AutoTradingService not found');
+      const autoTradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+      if (!autoTradingManager) {
+        throw new Error('AutoTradingManager not found');
       }
 
       // Parse configuration from message
@@ -106,7 +106,7 @@ export const startTradingAction: Action = {
       }
 
       // Start trading
-      await autoTradingService.startTrading({
+      await autoTradingManager.startTrading({
         strategy,
         tokens,
         maxPositionSize,

@@ -9,9 +9,12 @@ import {
   asUUID,
   ChannelType,
   type World,
+  AgentRuntime,
+  elizaLogger,
 } from '@elizaos/core';
 import { v4 as uuid } from 'uuid';
 import { strict as assert } from 'node:assert';
+import { AutoTradingManager } from '../../services/AutoTradingManager.ts';
 
 /**
  * Sets up a standard scenario environment for an E2E test.
@@ -127,4 +130,104 @@ export function sendMessageAndWaitForResponse(
       callback,
     });
   });
+}
+
+export interface TestContext {
+  runtime: IAgentRuntime;
+  tradingManager: AutoTradingManager;
+  startTime: number;
+}
+
+export async function waitForTrading(runtime: IAgentRuntime, maxWaitMs = 30000): Promise<boolean> {
+  const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < maxWaitMs) {
+    const status = tradingManager.getStatus();
+    if (status.isTrading) {
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  
+  return false;
+}
+
+export async function monitorTrades(runtime: IAgentRuntime, durationMs: number): Promise<any> {
+  const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+  const startTime = Date.now();
+  const tradeLog: any[] = [];
+  
+  elizaLogger.info(`[Test] Monitoring trades for ${durationMs / 1000} seconds...`);
+  
+  while (Date.now() - startTime < durationMs) {
+    const status = tradingManager.getStatus();
+    const performance = tradingManager.getPerformance();
+    
+    tradeLog.push({
+      timestamp: Date.now(),
+      isTrading: status.isTrading,
+      strategy: status.strategy,
+      positions: status.positions.length,
+      performance: {
+        totalPnL: performance.totalPnL,
+        dailyPnL: performance.dailyPnL,
+        totalTrades: performance.totalTrades,
+        winRate: performance.winRate,
+      }
+    });
+    
+    // Log every 10 seconds
+    if ((Date.now() - startTime) % 10000 < 1000) {
+      elizaLogger.info(`[Test] Trading status:`, {
+        elapsed: Math.floor((Date.now() - startTime) / 1000) + 's',
+        ...tradeLog[tradeLog.length - 1]
+      });
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  
+  return {
+    duration: Date.now() - startTime,
+    tradeLog,
+    finalStatus: tradingManager.getStatus(),
+    finalPerformance: tradingManager.getPerformance(),
+  };
+}
+
+export function validateTradingResult(result: any): void {
+  if (!result.finalStatus) {
+    throw new Error('No final status in trading result');
+  }
+  
+  if (!result.finalPerformance) {
+    throw new Error('No final performance in trading result');
+  }
+  
+  // Log summary
+  elizaLogger.info(`[Test] Trading Summary:`, {
+    duration: `${result.duration / 1000}s`,
+    totalTrades: result.finalPerformance.totalTrades,
+    winRate: `${(result.finalPerformance.winRate * 100).toFixed(1)}%`,
+    totalPnL: result.finalPerformance.totalPnL.toFixed(2),
+    dailyPnL: result.finalPerformance.dailyPnL.toFixed(2),
+    finalPositions: result.finalStatus.positions.length,
+  });
+}
+
+export async function simulateConversation(
+  runtime: IAgentRuntime,
+  messages: string[],
+  delayMs = 5000
+): Promise<void> {
+  for (const message of messages) {
+    elizaLogger.info(`[Test] User message: "${message}"`);
+    
+    // Simulate user sending a message
+    // In a real implementation, this would go through the message handler
+    // For now, we'll just log it
+    
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+  }
 }

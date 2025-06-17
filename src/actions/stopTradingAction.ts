@@ -1,6 +1,6 @@
 import type { Action, IAgentRuntime, Memory, HandlerCallback, State } from '@elizaos/core';
 import { elizaLogger } from '@elizaos/core';
-import { AutoTradingService } from '../services/AutoTradingService.ts';
+import { AutoTradingManager } from '../services/AutoTradingManager.ts';
 
 export const stopTradingAction: Action = {
   name: 'STOP_TRADING',
@@ -50,18 +50,19 @@ export const stopTradingAction: Action = {
     callback?: HandlerCallback
   ): Promise<boolean> => {
     try {
-      const autoTradingService = runtime.getService('AutoTradingService') as AutoTradingService;
-      if (!autoTradingService) {
-        throw new Error('AutoTradingService not found');
+      const autoTradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+      if (!autoTradingManager) {
+        throw new Error('AutoTradingManager not found');
       }
 
-      const wasTrading = autoTradingService.getIsTrading();
-      await autoTradingService.stopTrading();
+      const status = autoTradingManager.getStatus();
+      const wasTrading = status.isTrading;
+      await autoTradingManager.stopTrading();
 
       let response = '';
       if (wasTrading) {
-        const positions = autoTradingService.getPositions();
-        const dailyPnL = autoTradingService.getDailyPnL();
+        const positions = status.positions;
+        const dailyPnL = status.performance.dailyPnL;
 
         response = `🛑 Auto-trading stopped.
 

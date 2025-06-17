@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RandomStrategy } from '../../../strategies/RandomStrategy.ts';
 import type { StrategyContextMarketData, AgentState, PortfolioSnapshot } from '../../../types.ts';
 import { TradeType, OrderType } from '../../../types.ts';

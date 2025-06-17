@@ -1,6 +1,8 @@
 import type { IAgentRuntime, TestSuite, Content } from '@elizaos/core';
 import { strict as assert } from 'node:assert';
 import { setupScenario, sendMessageAndWaitForResponse } from './test-utils.ts';
+import { AutoTradingManager } from '../../services/AutoTradingManager.ts';
+import { monitorTrades, validateTradingResult } from './test-utils.ts';
 
 // Mock trading configuration
 const MOCK_CONFIG = {
@@ -48,304 +50,244 @@ function generateMockTransaction(
   };
 }
 
-export const mockTradingScenario: TestSuite = {
-  name: 'Mock Trading Scenarios',
+export const mockTradingScenarios: TestSuite = {
+  name: 'Mock Trading Scenarios (Safe Development)',
   tests: [
     {
-      name: 'Full Trading Lifecycle Mock Test',
-      fn: async (runtime: IAgentRuntime) => {
-        console.log('\n🎭 Starting Mock Trading Scenario');
-        console.log('=================================\n');
-        console.log('💡 This test runs with simulated trades - no real funds required\n');
-
-        // Setup test environment
-        const { user, room } = await setupScenario(runtime);
-
-        // Initialize mock services
-        const mockBalances = { ...MOCK_CONFIG.INITIAL_BALANCE };
-        const mockPrices = { ...MOCK_CONFIG.MOCK_PRICES };
-        const mockTransactions: any[] = [];
-        const mockPositions: any[] = [];
-
-        // Override service methods for mocking
-        const autoTrading = runtime.getService('AutoTradingService') as any;
-        const walletService = runtime.getService('WalletIntegrationService') as any;
-        const transactionMonitoring = runtime.getService('TransactionMonitoringService') as any;
-
-        // Mock wallet service
-        if (walletService) {
-          walletService.getBalance = async () => ({
-            sol: mockBalances.SOL,
-            tokens: new Map([
-              ['USDC', { amount: mockBalances.USDC, decimals: 6 }],
-              ['BONK', { amount: mockBalances.BONK, decimals: 5 }],
-              ['WIF', { amount: mockBalances.WIF, decimals: 6 }],
-            ]),
-          });
-
-          walletService.getWalletAddress = () => 'MockWallet1111111111111111111111111111111111';
+      name: 'MOCK: Test strategy with simulated prices (30s)',
+      fn: async (runtime) => {
+        console.log('\n🧪 STARTING MOCK TRADING TEST - NO REAL MONEY\n');
+        
+        // Enable mock mode
+        runtime.setCache('MOCK_TRADING', true);
+        runtime.setCache('MOCK_PRICES', {
+          'BONK': { price: 0.00001234, change24h: 15.5 },
+          'WIF': { price: 1.85, change24h: -5.2 },
+          'PEPE': { price: 0.00000892, change24h: 22.1 },
+        });
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        if (!tradingManager) {
+          throw new Error('AutoTradingManager service not found');
         }
 
-        // Mock transaction monitoring
-        if (transactionMonitoring) {
-          transactionMonitoring.getTransactionLogs = (filter: any) => {
-            return mockTransactions
-              .filter(
-                (tx) =>
-                  (!filter.status || tx.status === filter.status) &&
-                  (!filter.type || tx.type === filter.type)
-              )
-              .slice(0, filter.limit || 10);
-          };
-
-          transactionMonitoring.getTransactionMetrics = () => ({
-            totalTransactions: mockTransactions.length,
-            successfulTransactions: mockTransactions.filter((tx) => tx.status === 'success').length,
-            failedTransactions: mockTransactions.filter((tx) => tx.status === 'failed').length,
-            totalFees: mockTransactions.length * 0.001, // Mock 0.001 SOL per tx
-          });
-        }
-
-        // Mock auto trading
-        if (autoTrading) {
-          autoTrading.getPositions = () => mockPositions;
-          autoTrading.getDailyPnL = () => {
-            return mockPositions.reduce((pnl, pos) => {
-              const currentPrice = mockPrices[pos.token] || 0;
-              const unrealizedPnL = (currentPrice - pos.entryPrice) * pos.amount;
-              return pnl + unrealizedPnL;
-            }, 0);
-          };
-          autoTrading.getTotalPnL = () => autoTrading.getDailyPnL();
-        }
-
-        // Conversation flow
-        console.log('💬 Starting conversation with trading agent...\n');
-
-        // 1. Check initial portfolio
-        const portfolioResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Show me my portfolio balance'
-        );
-        console.log(`👤 User: Show me my portfolio balance`);
-        console.log(`🤖 Agent: ${portfolioResponse.text}\n`);
-        assert(portfolioResponse.text, 'Agent should respond with portfolio information');
-
-        // 2. Get market analysis
-        const marketResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          "What's your analysis of BONK and WIF right now?"
-        );
-        console.log(`👤 User: What's your analysis of BONK and WIF right now?`);
-        console.log(`🤖 Agent: ${marketResponse.text}\n`);
-
-        // 3. Configure strategy
-        const strategyResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Set up the momentum strategy with $20 max position size and 5% stop loss'
-        );
-        console.log(
-          `👤 User: Set up the momentum strategy with $20 max position size and 5% stop loss`
-        );
-        console.log(`🤖 Agent: ${strategyResponse.text}\n`);
-
-        // 4. Start mock trading
-        const startResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Start trading BONK and WIF with the momentum strategy'
-        );
-        console.log(`👤 User: Start trading BONK and WIF with the momentum strategy`);
-        console.log(`🤖 Agent: ${startResponse.text}\n`);
-
-        // Simulate trading activity
-        console.log('📊 Simulating trading activity...\n');
-
-        let tradeCount = 0;
-        const tradingDuration = 30000; // 30 seconds of mock trading
-        const startTime = Date.now();
-
-        const tradingInterval = setInterval(async () => {
-          // Update mock prices
-          Object.keys(mockPrices).forEach((token) => {
-            mockPrices[token] = generateMockPrice(
-              MOCK_CONFIG.MOCK_PRICES[token],
-              MOCK_CONFIG.PRICE_VOLATILITY
-            );
-          });
-
-          // Simulate a trade decision
-          if (Math.random() > 0.5 && tradeCount < 5) {
-            const tokens = ['BONK', 'WIF'];
-            const token = tokens[Math.floor(Math.random() * tokens.length)];
-            const isBuy = Math.random() > 0.5;
-            const amount = Math.random() * 100;
-
-            // Create mock transaction
-            const mockTx = generateMockTransaction(
-              isBuy ? 'buy' : 'sell',
-              token,
-              amount,
-              mockPrices[token]
-            );
-
-            mockTransactions.push(mockTx);
-
-            if (mockTx.status === 'success') {
-              // Update mock position
-              if (isBuy) {
-                mockPositions.push({
-                  token,
-                  amount,
-                  entryPrice: mockPrices[token],
-                  timestamp: Date.now(),
-                });
-
-                // Update mock balance
-                mockBalances.USDC -= amount * mockPrices[token];
-                mockBalances[token] = (mockBalances[token] || 0) + amount;
-              } else {
-                // Find and close position
-                const posIndex = mockPositions.findIndex((p) => p.token === token);
-                if (posIndex >= 0) {
-                  const position = mockPositions[posIndex];
-                  mockPositions.splice(posIndex, 1);
-
-                  // Update mock balance
-                  mockBalances.USDC += amount * mockPrices[token];
-                  mockBalances[token] = (mockBalances[token] || 0) - amount;
-                }
-              }
-
-              console.log(`\n💹 Mock Trade Executed:`);
-              console.log(`   Type: ${isBuy ? 'BUY' : 'SELL'} ${token}`);
-              console.log(`   Amount: ${amount.toFixed(2)} ${token}`);
-              console.log(`   Price: $${mockPrices[token].toFixed(6)}`);
-              console.log(`   Value: $${(amount * mockPrices[token]).toFixed(2)}`);
-              console.log(`   TX: ${mockTx.signature}`);
-
-              tradeCount++;
-            }
-          }
-
-          // Check if we should stop
-          if (Date.now() - startTime > tradingDuration) {
-            clearInterval(tradingInterval);
-          }
-        }, 5000); // Check every 5 seconds
-
-        // Wait for trading to complete
-        await new Promise((resolve) => setTimeout(resolve, tradingDuration + 1000));
-
-        // 5. Check status during trading
-        const statusResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'How is the trading going? Show me current P&L'
-        );
-        console.log(`\n👤 User: How is the trading going? Show me current P&L`);
-        console.log(`🤖 Agent: ${statusResponse.text}\n`);
-
-        // 6. Stop trading
-        const stopResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Stop trading and show me the final report'
-        );
-        console.log(`👤 User: Stop trading and show me the final report`);
-        console.log(`🤖 Agent: ${stopResponse.text}\n`);
-
-        // Final report
-        console.log('\n' + '='.repeat(50));
-        console.log('📊 MOCK TRADING SCENARIO RESULTS');
-        console.log('='.repeat(50) + '\n');
-
-        console.log('Trading Summary:');
-        console.log(`- Duration: ${tradingDuration / 1000} seconds`);
-        console.log(`- Total trades: ${mockTransactions.length}`);
-        console.log(
-          `- Successful trades: ${mockTransactions.filter((tx) => tx.status === 'success').length}`
-        );
-        console.log(
-          `- Failed trades: ${mockTransactions.filter((tx) => tx.status === 'failed').length}`
-        );
-        console.log(`- Open positions: ${mockPositions.length}`);
-
-        console.log('\nFinal Balances:');
-        console.log(`- SOL: ${mockBalances.SOL.toFixed(4)}`);
-        console.log(`- USDC: $${mockBalances.USDC.toFixed(2)}`);
-        console.log(`- BONK: ${mockBalances.BONK.toFixed(0)}`);
-        console.log(`- WIF: ${mockBalances.WIF.toFixed(2)}`);
-
-        console.log('\nPrice Changes:');
-        Object.keys(MOCK_CONFIG.MOCK_PRICES).forEach((token) => {
-          const initialPrice = MOCK_CONFIG.MOCK_PRICES[token];
-          const finalPrice = mockPrices[token];
-          const change = ((finalPrice - initialPrice) / initialPrice) * 100;
-          console.log(
-            `- ${token}: $${initialPrice} → $${finalPrice.toFixed(6)} (${change > 0 ? '+' : ''}${change.toFixed(2)}%)`
-          );
+        // Start trading with multiple strategies
+        console.log('📊 Testing momentum strategy with mock prices...\n');
+        
+        await tradingManager.startTrading({
+          strategy: 'momentum-breakout-v1',
+          tokens: ['BONK', 'WIF', 'PEPE'],
+          maxPositionSize: 100, // Can use larger amounts in mock
+          intervalMs: 5000, // Faster for testing
+          stopLossPercent: 5,
+          takeProfitPercent: 8,
+          maxDailyLoss: 500,
         });
 
-        // Assertions
-        assert(mockTransactions.length > 0, 'Should execute at least one mock trade');
-        assert(statusResponse.text, 'Agent should provide status update');
-        assert(stopResponse.text, 'Agent should provide final report');
-
-        console.log('\n✅ MOCK TRADING SCENARIO COMPLETED SUCCESSFULLY!');
-      },
+        // Monitor for 30 seconds
+        const result = await monitorTrades(runtime, 30000);
+        
+        await tradingManager.stopTrading();
+        
+        console.log('\n📊 MOCK TRADING RESULTS:');
+        console.log('═══════════════════════════');
+        validateTradingResult(result);
+        
+        // Ensure we executed some mock trades
+        if (result.finalPerformance.totalTrades === 0) {
+          throw new Error('No mock trades were executed');
+        }
+        
+        console.log('\n✅ Mock trading test completed successfully');
+        
+        // Clean up
+        runtime.setCache('MOCK_TRADING', false);
+      }
     },
-
+    
     {
-      name: 'Strategy Comparison Mock Test',
-      fn: async (runtime: IAgentRuntime) => {
-        console.log('\n🔄 Starting Strategy Comparison Mock Test');
-        console.log('========================================\n');
-
-        const { user, room } = await setupScenario(runtime);
-
-        // Ask agent to compare strategies
-        const compareResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Compare the performance of momentum, RSI, and random strategies for BONK trading'
+      name: 'MOCK: Compare multiple strategies (1 min)',
+      fn: async (runtime) => {
+        console.log('\n⚖️ COMPARING TRADING STRATEGIES WITH MOCK DATA\n');
+        
+        runtime.setCache('MOCK_TRADING', true);
+        runtime.setCache('MOCK_PRICES', {
+          'BONK': { price: 0.00001234, change24h: 15.5 },
+          'WIF': { price: 1.85, change24h: -5.2 },
+        });
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        const strategies = ['random-v1', 'mean-reversion-strategy', 'momentum-breakout-v1'];
+        const results: any[] = [];
+        
+        for (const strategy of strategies) {
+          console.log(`\n🔄 Testing ${strategy}...`);
+          
+          await tradingManager.startTrading({
+            strategy,
+            tokens: ['BONK', 'WIF'],
+            maxPositionSize: 50,
+            intervalMs: 3000,
+            stopLossPercent: 5,
+            takeProfitPercent: 8,
+          });
+          
+          // Run for 20 seconds each
+          const result = await monitorTrades(runtime, 20000);
+          await tradingManager.stopTrading();
+          
+          results.push({
+            strategy,
+            trades: result.finalPerformance.totalTrades,
+            winRate: result.finalPerformance.winRate,
+            totalPnL: result.finalPerformance.totalPnL,
+          });
+          
+          // Reset for next strategy
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        // Compare results
+        console.log('\n📊 STRATEGY COMPARISON:');
+        console.log('═══════════════════════════════════════');
+        results.forEach(r => {
+          console.log(`\n${r.strategy}:`);
+          console.log(`  Trades: ${r.trades}`);
+          console.log(`  Win Rate: ${(r.winRate * 100).toFixed(1)}%`);
+          console.log(`  Total P&L: $${r.totalPnL.toFixed(2)}`);
+        });
+        
+        // Find best performer
+        const best = results.reduce((prev, current) => 
+          (current.totalPnL > prev.totalPnL) ? current : prev
         );
-        console.log(
-          `👤 User: Compare the performance of momentum, RSI, and random strategies for BONK trading`
-        );
-        console.log(`🤖 Agent: ${compareResponse.text}\n`);
-
-        assert(
-          compareResponse.text?.includes('momentum') || compareResponse.text?.includes('RSI'),
-          'Agent should discuss different strategies'
-        );
-
-        // Ask for backtest
-        const backtestResponse = await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          'Run a backtest of the RSI strategy on BONK for the last 7 days'
-        );
-        console.log(`👤 User: Run a backtest of the RSI strategy on BONK for the last 7 days`);
-        console.log(`🤖 Agent: ${backtestResponse.text}\n`);
-
-        assert(backtestResponse.text, 'Agent should provide backtest results');
-
-        console.log('✅ Strategy comparison test completed!');
-      },
+        
+        console.log(`\n🏆 Best performing strategy: ${best.strategy}`);
+        
+        runtime.setCache('MOCK_TRADING', false);
+      }
     },
-  ],
+    
+    {
+      name: 'MOCK: Stress test with rapid trades',
+      fn: async (runtime) => {
+        console.log('\n⚡ STRESS TESTING WITH RAPID MOCK TRADES\n');
+        
+        runtime.setCache('MOCK_TRADING', true);
+        runtime.setCache('MOCK_PRICES', {
+          'TEST1': { price: 1.0, change24h: 0 },
+          'TEST2': { price: 2.0, change24h: 0 },
+          'TEST3': { price: 3.0, change24h: 0 },
+        });
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        
+        // Use random strategy with high probability for stress test
+        await tradingManager.startTrading({
+          strategy: 'random-v1',
+          tokens: ['TEST1', 'TEST2', 'TEST3'],
+          maxPositionSize: 10,
+          intervalMs: 1000, // Trade every second
+        });
+        
+        // Monitor for 15 seconds
+        const startTime = Date.now();
+        let tradeCount = 0;
+        
+        while (Date.now() - startTime < 15000) {
+          const perf = tradingManager.getPerformance();
+          if (perf.totalTrades > tradeCount) {
+            tradeCount = perf.totalTrades;
+            console.log(`⚡ Trade #${tradeCount} executed`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        await tradingManager.stopTrading();
+        
+        const finalPerf = tradingManager.getPerformance();
+        console.log(`\n✅ Stress test completed:`);
+        console.log(`   Total trades: ${finalPerf.totalTrades}`);
+        console.log(`   Trades per second: ${(finalPerf.totalTrades / 15).toFixed(2)}`);
+        
+        if (finalPerf.totalTrades < 5) {
+          throw new Error('Too few trades in stress test');
+        }
+        
+        runtime.setCache('MOCK_TRADING', false);
+      }
+    },
+    
+    {
+      name: 'MOCK: Test risk management triggers',
+      fn: async (runtime) => {
+        console.log('\n🛡️ TESTING RISK MANAGEMENT WITH MOCK LOSSES\n');
+        
+        runtime.setCache('MOCK_TRADING', true);
+        
+        // Set up prices that will trigger stop losses
+        runtime.setCache('MOCK_PRICES', {
+          'RISK1': { price: 100, change24h: -10 },
+        });
+        
+        const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+        
+        await tradingManager.startTrading({
+          strategy: 'random-v1',
+          tokens: ['RISK1'],
+          maxPositionSize: 50,
+          intervalMs: 2000,
+          stopLossPercent: 2, // Tight stop loss
+          maxDailyLoss: 20, // Low daily loss limit
+        });
+        
+        // Simulate price drops
+        let priceDrops = 0;
+        for (let i = 0; i < 10; i++) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Progressively drop the price
+          const currentPrice = 100 - (i * 5);
+          runtime.setCache('MOCK_PRICES', {
+            'RISK1': { price: currentPrice, change24h: -20 - i },
+          });
+          
+          const status = tradingManager.getStatus();
+          const perf = tradingManager.getPerformance();
+          
+          console.log(`📉 Price: $${currentPrice}, Daily P&L: $${perf.dailyPnL.toFixed(2)}`);
+          
+          // Check if trading stopped due to risk limits
+          if (!status.isTrading) {
+            console.log('\n🛑 Trading stopped due to risk limits!');
+            break;
+          }
+          
+          // Check if we hit daily loss limit
+          if (perf.dailyPnL <= -20) {
+            console.log('\n🚨 Daily loss limit reached!');
+            break;
+          }
+          
+          priceDrops++;
+        }
+        
+        await tradingManager.stopTrading();
+        
+        const finalPerf = tradingManager.getPerformance();
+        console.log(`\n✅ Risk management test completed:`);
+        console.log(`   Final P&L: $${finalPerf.totalPnL.toFixed(2)}`);
+        console.log(`   Daily P&L: $${finalPerf.dailyPnL.toFixed(2)}`);
+        
+        // Verify risk limits worked
+        if (finalPerf.dailyPnL < -25) {
+          throw new Error('Daily loss limit was not enforced');
+        }
+        
+        runtime.setCache('MOCK_TRADING', false);
+      }
+    }
+  ]
 };
 
-export default mockTradingScenario;
+export default mockTradingScenarios;
