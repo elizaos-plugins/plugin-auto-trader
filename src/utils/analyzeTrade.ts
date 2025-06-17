@@ -57,7 +57,7 @@ Provide an XML response in the following format. Example:
 </trade_analysis>
 `;
 
-import { ServiceTypes } from '../types';
+import { ServiceTypes } from '../types/index.ts';
 import { type IAgentRuntime, logger } from '@elizaos/core';
 
 // FIXME: change runtime to just pass the dataService in

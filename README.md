@@ -1,195 +1,143 @@
-# Knowledge Plugin for ElizaOS
+# ElizaOS AutoTrader Plugin (`plugin-auto-trader`)
 
-This plugin provides Retrieval Augmented Generation (Knowledge) capabilities for ElizaOS agents, allowing them to load, index, and query knowledge from various sources.
+## 1. Overview
 
-## Quick Setup
+The `plugin-auto-trader` is an ElizaOS plugin designed to provide autonomous and configurable cryptocurrency trading capabilities. It allows agents to execute trading strategies, simulate these strategies against historical data, and analyze their performance.
 
-### Basic Setup (With plugin-openai)
+This plugin is built with a modular approach, enabling the easy addition of new trading strategies and data sources.
 
-If you already have plugin-openai configured, you don't need any additional environment variables! The Knowledge plugin will automatically use your OpenAI configuration.
+## 2. Key Features
 
-1. Make sure you have plugin-openai configured with:
+*   **Pluggable Trading Strategy Framework:**
+    *   A core `TradingStrategy` interface that all strategies implement.
+    *   `StrategyRegistryService` for discovering and managing available strategies.
+*   **Implemented Trading Strategies:**
+    *   **`RandomStrategy`**: Makes random buy/sell decisions. Useful as a baseline.
+        *   Configurable: `tradeAttemptProbability`, `buyProbability`, `maxTradeSizePercentage`, `fixedTradeQuantity`.
+    *   **`RuleBasedStrategy`**: Executes trades based on technical indicators and market conditions.
+        *   Configurable: A list of `RuleCondition` objects (RSI, SMA/EMA Crossover, Volume triggers), stop-loss/take-profit settings, trade sizing.
+        *   *Note: Currently uses mock calculations for TI. Integration with a library like `technicalindicators` is planned.*
+    *   **`LLMStrategy`**: Leverages a Large Language Model (LLM) to make trading decisions.
+        *   Configurable: `modelName`, `systemPrompt`, `customPromptPrefix/Suffix`, trade sizing defaults.
+        *   Builds a detailed prompt based on market data and agent state.
+        *   Parses JSON responses from the LLM.
+        *   *Note: Requires integration with a core ElizaOS LLM service.*
+*   **Simulation Engine:**
+    *   **`HistoricalDataService`**: Fetches and caches historical OHLCV data.
+        *   Supports a `mockSource` for testing and a conceptual `birdeye` API integration (requires `BIRDEYE_API_KEY` environment variable).
+        *   Conceptual filesystem-based caching (actual file I/O is placeholder).
+    *   **`SimulationService`**: Runs backtests of trading strategies against historical data.
+        *   Simulates trade execution, including transaction costs and basic slippage.
+        *   Tracks portfolio value, P&L (including realized P&L per closing trade), and individual trades.
+*   **Benchmarking & Reporting:**
+    *   **`PerformanceReportingService`**: Generates detailed performance reports (`SimulationReport`).
+    *   Calculates key metrics: Total P&L (absolute and percentage), Win/Loss Ratio, Average Win/Loss size, Max Drawdown, Total Trades, Buy & Hold P&L benchmark.
+    *   *Note: Advanced metrics like Sharpe/Sortino Ratio are placeholders.*
 
-   ```env
-   OPENAI_API_KEY=your-openai-api-key
-   OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-   ```
+## 3. Installation & Setup (Conceptual)
 
-2. Add the Knowledge plugin to your agent's configuration
-3. That's it! The plugin will work without any additional variables
+This plugin is intended to be part of the ElizaOS ecosystem.
 
-### Enabling Contextual Knowledge
+1.  Ensure `plugin-auto-trader` is included in your ElizaOS plugins directory.
+2.  The plugin will be initialized during ElizaOS startup via its `src/index.ts` (`initializePlugin` function).
+3.  **API Keys (Required for some features):**
+    *   For Birdeye data via `HistoricalDataService`: Set the `BIRDEYE_API_KEY` environment variable.
+4.  **External Libraries (Future):**
+    *   When `RuleBasedStrategy` is updated to use a real Technical Indicators library (e.g., `technicalindicators`), it will need to be installed: `npm install technicalindicators` (or `bun install`).
 
-If you want enhanced Knowledge capabilities with contextual embeddings, add:
+## 4. How to Use (Conceptual - via direct service calls for now)
 
-```env
-# Enable contextual Knowledge
-CTX_KNOWLEDGE_ENABLED=true
+Currently, interaction with the plugin's services would typically be done programmatically within another ElizaOS plugin or service that has access to the auto-trader's registered services.
 
-# Required text generation settings
-TEXT_PROVIDER=openrouter  # Choose your provider: openai, anthropic, openrouter, or google
-TEXT_MODEL=anthropic/claude-3.5-sonnet  # Model for your chosen provider
+### 4.1. Accessing Services
 
-# Provider-specific API key (based on TEXT_PROVIDER)
-OPENROUTER_API_KEY=your-openrouter-api-key
-# OR ANTHROPIC_API_KEY=your-anthropic-api-key
-# OR GOOGLE_API_KEY=your-google-api-key
-# OR use existing OPENAI_API_KEY
-```
+Services are registered with ElizaOS runtime (conceptually) during plugin initialization. You would typically retrieve them using `runtime.getService('serviceName')`:
 
-### Custom Embedding Configuration (Without plugin-openai)
+*   `runtime.getService('auto-trader/StrategyRegistryService')`
+*   `runtime.getService('auto-trader/HistoricalDataService')`
+*   `runtime.getService('auto-trader/SimulationService')`
+*   `runtime.getService('auto-trader/PerformanceReportingService')`
 
-If you're not using plugin-openai or want to use different embedding settings:
+*(Note: The exact service names depend on the runtime's registration mechanism. The plugin currently attempts to register service classes.)*
 
-```env
-# Required embedding settings
-EMBEDDING_PROVIDER=openai  # or google
-TEXT_EMBEDDING_MODEL=text-embedding-3-small
-
-# Provider-specific API key
-OPENAI_API_KEY=your-openai-api-key  # if using openai
-# OR GOOGLE_API_KEY=your-google-api-key  # if using google
-
-# Optional: Custom embedding dimension
-EMBEDDING_DIMENSION=1536
-```
-
-## Advanced Configuration
-
-### Recommended Configurations for Contextual Knowledge
-
-For optimal performance with contextual Knowledge, we recommend these provider combinations:
-
-**Option 1: OpenRouter with Claude/Gemini (Best for cost efficiency)**
-
-```env
-# If using with plugin-openai, only need these additions:
-CTX_KNOWLEDGE_ENABLED=true
-TEXT_PROVIDER=openrouter
-TEXT_MODEL=anthropic/claude-3.5-sonnet  # or google/gemini-2.5-flash-preview
-OPENROUTER_API_KEY=your-openrouter-api-key
-```
-
-**Option 2: OpenAI for Everything**
-
-```env
-# If using with plugin-openai, only need these additions:
-CTX_KNOWLEDGE_ENABLED=true
-TEXT_PROVIDER=openai
-TEXT_MODEL=gpt-4o
-```
-
-**Option 3: Google AI for Everything**
-
-```env
-EMBEDDING_PROVIDER=google
-TEXT_EMBEDDING_MODEL=text-embedding-004
-TEXT_PROVIDER=google
-TEXT_MODEL=gemini-1.5-pro-latest
-GOOGLE_API_KEY=your-google-api-key
-CTX_KNOWLEDGE_ENABLED=true
-```
-
-### Advanced Rate Limiting Options
-
-```env
-# Rate limiting (optional)
-MAX_CONCURRENT_REQUESTS=30  # Default: 30
-REQUESTS_PER_MINUTE=60      # Default: 60
-TOKENS_PER_MINUTE=150000    # Default: 150000
-```
-
-### Custom API Endpoints
-
-```env
-# Only needed if using custom API endpoints
-OPENAI_BASE_URL=https://your-openai-proxy.com/v1
-ANTHROPIC_BASE_URL=https://your-anthropic-proxy.com
-OPENROUTER_BASE_URL=https://your-openrouter-proxy.com/api/v1
-GOOGLE_BASE_URL=https://your-google-proxy.com
-```
-
-### Token Limits
-
-```env
-# Advanced token handling (optional)
-MAX_INPUT_TOKENS=4000   # Default: 4000
-MAX_OUTPUT_TOKENS=4096  # Default: 4096
-```
-
-## Architecture
-
-The plugin is built with a modular, clean architecture that follows SOLID principles:
-
-```
-packages/plugin-knowledge/
-├── src/
-│   ├── index.ts           # Main entry point and plugin definition
-│   ├── service.ts         # Knowledge service implementation
-│   ├── types.ts           # Type definitions
-│   ├── llm.ts             # LLM interactions (text generation, embeddings)
-│   ├── config.ts          # Configuration validation
-│   ├── ctx-embeddings.ts  # Contextual embedding generation
-│   ├── document-processor.ts # Shared document processing utilities
-│   └── utils.ts           # Utility functions
-├── README.md              # This file
-└── package.json           # Package definition
-```
-
-### Database-Specific Processing Paths
-
-The Knowledge plugin adapts to the database technology being used:
-
-1. **PostgreSQL Mode**: Uses worker threads to offload document processing from the main thread
-2. **PGLite Mode**: Uses synchronous processing in the main thread due to PGLite's single-threaded nature
-
-This allows the plugin to work optimally with both databases while maintaining the same functionality.
-
-### Processing Flow
-
-The document processing flow follows these steps regardless of database type:
-
-1. Extract text from the document based on content type
-2. Store the main document in the database
-3. Split the document into chunks
-4. Generate embeddings for each chunk (with optional context enrichment)
-5. Store the chunks with embeddings in the database
-
-## Component Overview
-
-- **KnowledgeService**: Core service that manages document processing and storage
-- **Document Processor**: Provides shared document processing utilities for both processing paths
-
-## Features
-
-- Document upload and processing (PDF, text, and other formats)
-- Contextual chunking and embedding generation
-- Robust error handling and recovery
-- Rate limiting to respect provider limitations
-- Support for multiple LLM providers
-
-## Usage
-
-### Basic Usage
+### 4.2. Listing Available Strategies
 
 ```typescript
-import { KnowledgeService } from '@elizaos/plugin-knowledge';
-
-// Add knowledge to an agent
-const result = await knowledgeService.addKnowledge({
-  clientDocumentId: 'unique-id',
-  content: documentContent, // Base64 string for binary files or plain text for text files
-  contentType: 'application/pdf',
-  originalFilename: 'document.pdf',
-  worldId: 'world-id',
-  roomId: 'optional-room-id', // Optional scoping
-  entityId: 'optional-entity-id', // Optional scoping
-});
-
-console.log(`Document stored with ID: ${result.storedDocumentMemoryId}`);
-console.log(`Created ${result.fragmentCount} searchable fragments`);
+// const strategyRegistry = runtime.getService('auto-trader/StrategyRegistryService') as StrategyRegistryService;
+// const strategies = strategyRegistry.listStrategies();
+// console.log(strategies.map(s => s.name));
 ```
 
-## License
+### 4.3. Running a Simulation
 
-See the ElizaOS license for details.
+Use the `SimulationService` to run a backtest:
+
+```typescript
+// const simulationService = runtime.getService('auto-trader/SimulationService') as SimulationService;
+// const historicalDataService = runtime.getService('auto-trader/HistoricalDataService') as DefaultHistoricalDataService;
+// const strategyRegistry = runtime.getService('auto-trader/StrategyRegistryService') as StrategyRegistryService;
+// const performanceReporting = new PerformanceReportingService(); // Or get from runtime if stateful
+
+// Ensure services are available, then:
+// const simService = new SimulationService(strategyRegistry, historicalDataService, performanceReporting);
+
+const simulationParams = {
+  strategyId: 'random-v1', // or 'rule-based-v1', 'llm-v1'
+  strategyParams: {
+    // Strategy-specific parameters, e.g., for RandomStrategy:
+    tradeAttemptProbability: 0.5,
+    buyProbability: 0.6,
+    fixedTradeQuantity: 2,
+    // e.g., for RuleBasedStrategy:
+    // rules: [{ type: 'RSI', rsiPeriod: 14, rsiOversold: 30, action: 'BUY' }],
+    // stopLossTakeProfit: { stopLossPercentage: 0.05 }
+  },
+  symbol: 'SOL/USDC', // Use a token address for Birdeye, e.g., 'So11111111111111111111111111111111111111112'
+  timeframe: '1h',
+  startDate: new Date('2023-01-01T00:00:00Z'),
+  endDate: new Date('2023-03-01T00:00:00Z'),
+  initialCapital: 10000,
+  transactionCostPercentage: 0.001, // 0.1%
+  slippagePercentage: { marketOrder: 0.0005 }, // 0.05%
+  dataApiSource: 'mockSource', // or 'birdeye' (if API key is set)
+};
+
+// async function runTestSimulation() {
+//   try {
+//     const report = await simulationService.runBacktest(simulationParams);
+//     console.log('Simulation Report:', JSON.stringify(report, null, 2));
+//     console.log('P&L:', report.metrics.totalPnlPercentage * 100, '%');
+//     console.log('Buy & Hold P&L:', report.metrics.buyAndHoldPnlPercentage * 100, '%');
+//   } catch (error) {
+//     console.error('Simulation failed:', error);
+//   }
+// }
+// runTestSimulation();
+```
+
+### 4.4. Strategy Configuration Parameters
+
+*   **`RandomStrategyParams`**: `tradeAttemptProbability`, `buyProbability`, `maxTradeSizePercentage`, `fixedTradeQuantity`.
+*   **`RuleBasedStrategyParams`**: `rules` (array of `RuleCondition`), `stopLossTakeProfit`, `tradeSizePercentage`, `fixedTradeQuantity`, `minIndicatorDataPoints`.
+    *   `RuleCondition`: `type` (`RSI`, `SMA_CROSSOVER`, etc.), `action` (`BUY`/`SELL`), and type-specific params (e.g., `rsiPeriod`, `shortMAPeriod`, `longMAPeriod`, `maType`).
+*   **`LLMStrategyParams`**: `modelName`, `systemPrompt`, `customPromptPrefix`, `customPromptSuffix`, `maxTokens`, `temperature`, `defaultTradeSizePercentage`, `defaultFixedTradeQuantity`, `structuredOutputSchema`.
+
+## 5. Current Limitations & Placeholders
+
+*   **Real Data Source Integration**: `HistoricalDataService` currently uses mock data for most sources. Birdeye integration is conceptual and requires a valid API key. Full implementation of other sources (CoinMarketCap, Jupiter, CCXT) is pending.
+*   **Real Technical Indicators**: `RuleBasedStrategy` uses mock calculations for technical indicators. It needs to be integrated with a library like `technicalindicators`.
+*   **Real LLM Service**: `LLMStrategy` requires integration with a functional ElizaOS core LLM service.
+*   **Order Execution Service**: No real implementation for live/paper trading yet; only simulation.
+*   **Advanced Metrics**: Sharpe Ratio, Sortino Ratio, and other advanced financial metrics are placeholders.
+*   **Filesystem Cache**: The filesystem cache in `HistoricalDataService` is conceptual; actual file I/O operations are commented out.
+
+## 6. Future Enhancements (from original spec)
+
+*   More sophisticated strategies (arbitrage, ML-based).
+*   Portfolio-level strategies.
+*   Walk-forward optimization.
+*   Live paper trading & real money trading.
+*   Strategy marketplace integration.
+*   Visual backtesting tools.
+
+This README provides a starting point and will be updated as the plugin evolves.

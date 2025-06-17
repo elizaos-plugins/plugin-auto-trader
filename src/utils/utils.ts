@@ -22,7 +22,7 @@ export async function fetchWithRetry(
   chain: 'solana' | 'base' = 'solana',
   maxRetries = 3
 ): Promise<any> {
-  let lastError: Error;
+  let lastError: Error = new Error('No attempts made');
 
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -144,19 +144,8 @@ export async function manageAnalyzedTokens(
       });
     }
 
-    // Update state
-    if (runtime) {
-      await runtime.updateRecentMessageState({
-        ...state,
-        userId: runtime.agentId,
-        agentId: runtime.agentId,
-        roomId: runtime.agentId,
-        content: {
-          ...state?.content,
-          [historyKey]: JSON.stringify(history),
-        },
-      });
-    }
+    // Note: State updates should be handled by the caller
+    // since IAgentRuntime doesn't have updateRecentMessageState
 
     return history;
   } catch (error) {

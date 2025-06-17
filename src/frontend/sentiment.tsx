@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import moment from 'moment';
-import Loader from './loader';
-import { Badge } from './ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import Loader from './loader.js';
+import { Badge } from './ui/badge.js';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table.js';
 
 const getSentimentColor = (sentiment: number) => {
   if (sentiment >= 75) return 'text-green-600 bg-green-50';

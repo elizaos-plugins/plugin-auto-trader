@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Wallet as WalletIcon, Search, Filter } from 'lucide-react';
-import Loader from './loader';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Input } from './ui/input';
+import Loader from './loader.js';
+import { Badge } from './ui/badge.js';
+import { Button } from './ui/button.js';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
+import { Input } from './ui/input.js';
 
 const formatCurrency = (value: number, minimumFractionDigits = 2, maximumFractionDigits = 2) => {
   return new Intl.NumberFormat('en-US', {

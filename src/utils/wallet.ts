@@ -1,6 +1,6 @@
 import { logger, type IAgentRuntime } from '@elizaos/core';
 import { Keypair } from '@solana/web3.js';
-import { decodeBase58 } from './utils'; // decodeBase58 is imported from utils.ts
+import { decodeBase58 } from './utils.ts'; // decodeBase58 is imported from utils.ts
 
 /**
  * Gets wallet keypair from runtime settings.

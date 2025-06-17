@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import moment from 'moment';
 import { TrendingUp, TrendingDown, AlertCircle, CheckCircle } from 'lucide-react';
-import Loader from './loader';
-import { Badge } from './ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
+import Loader from './loader.js';
+import { Badge } from './ui/badge.js';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
+import { Button } from './ui/button.js';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', {

@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import Loader from './loader';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { cn } from './utils';
+import Loader from './loader.js';
+import { Badge } from './ui/badge.js';
+import { Button } from './ui/button.js';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table.js';
+import { cn } from './utils.js';
 
 const formatUSD = (value: number): string => {
   if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;

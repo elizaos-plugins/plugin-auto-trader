@@ -2,6 +2,10 @@ import { UUID } from '@elizaos/core';
 
 export enum ServiceTypes {
   DEGEN_TRADING = 'DEGEN_TRADING',
+  TRADE_MEMORY = 'TRADE_MEMORY',
+  DATA = 'DATA',
+  BUY = 'BUY',
+  SELL = 'SELL',
 }
 
 export interface TokenSignal {
@@ -42,6 +46,7 @@ export interface BuySignalMessage {
   positionId: UUID;
   tokenAddress: string;
   entityId: string;
+  tradeAmount?: number;
   expectedOutAmount: string;
 }
 
@@ -83,4 +88,14 @@ export interface TradePerformanceData {
   profit_usd: number;
   profit_percent: number;
   rapidDump: boolean;
+}
+
+export interface Position {
+  id: UUID;
+  tokenAddress: string;
+  amount: number;
+  entryPrice: number;
+  currentPrice?: number;
+  unrealizedPnl?: number;
+  realizedPnl?: number;
 }

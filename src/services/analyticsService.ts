@@ -1,25 +1,32 @@
-import { type IAgentRuntime, logger } from '@elizaos/core';
-import { TokenSignal, TradePerformanceData } from '../types/index';
+import { Service, type IAgentRuntime, logger } from '@elizaos/core';
+import { TokenSignal, TradePerformanceData } from '../types/index.ts';
 import { v4 as uuidv4 } from 'uuid';
 
 // Import technicalindicators - it's already in package.json dependencies
 import * as TI from 'technicalindicators';
 
-export class AnalyticsService {
-  public static readonly serviceType = 'analytics';
-  public capabilityDescription = 'Provides technical analysis and signal scoring';
-  private runtime: IAgentRuntime;
+export class AnalyticsService extends Service {
+  public static readonly serviceType = 'AnalyticsService';
+  public readonly capabilityDescription =
+    'Provides comprehensive technical analysis and signal scoring for backtesting';
 
   constructor(runtime: IAgentRuntime) {
-    this.runtime = runtime;
+    super(runtime);
   }
 
-  async initialize(): Promise<void> {
-    logger.info('Initializing analytics service');
+  public static async start(runtime: IAgentRuntime): Promise<AnalyticsService> {
+    console.log(`[${AnalyticsService.serviceType}] Starting...`);
+    const instance = new AnalyticsService(runtime);
+    await instance.start();
+    return instance;
   }
 
-  async stop(): Promise<void> {
-    // Cleanup if needed
+  public async start(): Promise<void> {
+    console.log(`[${AnalyticsService.serviceType}] Started successfully`);
+  }
+
+  public async stop(): Promise<void> {
+    console.log(`[${AnalyticsService.serviceType}] Stopped`);
   }
 
   async scoreTechnicalSignals(signals: TokenSignal['technicalSignals']): Promise<number> {
@@ -62,7 +69,7 @@ export class AnalyticsService {
     let score = 0;
 
     // Mention count (0-10 points)
-    const mentionScore = Math.min(metrics.mentionCount / 100, 10);
+    const mentionScore = Math.min((metrics.mentionCount / 100) * 10, 10);
     score += mentionScore;
 
     // Sentiment (-10 to +10 points)
@@ -102,242 +109,364 @@ export class AnalyticsService {
     return score;
   }
 
-  async trackSlippageImpact(
-    tokenAddress: string,
-    expectedAmount: string,
-    actualAmount: string,
-    slippageBps: number,
-    isSell: boolean
-  ): Promise<void> {
-    try {
-      const expected = Number(expectedAmount);
-      const actual = Number(actualAmount);
-
-      if (expected <= 0 || actual <= 0) {
-        logger.warn('Invalid amounts for slippage tracking', {
-          tokenAddress,
-          expectedAmount,
-          actualAmount,
-        });
-        return;
-      }
-
-      const actualSlippage = ((expected - actual) / expected) * 100;
-      const actualSlippageBps = Math.floor(actualSlippage * 100);
-
-      await this.runtime.setCache(`slippage_impact:${tokenAddress}:${Date.now()}`, {
-        tokenAddress,
-        timestamp: new Date().toISOString(),
-        expectedAmount,
-        actualAmount,
-        slippageBpsUsed: slippageBps,
-        actualSlippageBps,
-        isSell,
-      });
-
-      logger.info('Trade slippage impact tracked', {
-        tokenAddress,
-        slippageBpsUsed: slippageBps,
-        actualSlippageBps,
-        efficiency: actualSlippageBps / slippageBps,
-      });
-    } catch (error) {
-      console.log('Error tracking slippage impact', error);
-    }
-  }
-
-  calculateRSI(prices: number[], period: number): number {
+  // Enhanced RSI calculation with full TI library support
+  calculateRSI(prices: number[], period: number = 14): number {
     if (prices.length < period + 1) {
       return 50; // Default neutral value
     }
 
-    try {
-      // Use technicalindicators library if available
-      const rsiValues = TI.RSI.calculate({ values: prices, period });
-      return rsiValues[rsiValues.length - 1] || 50;
-    } catch (error) {
-      // Fallback to manual calculation
-      let gains = 0;
-      let losses = 0;
-
-      // Calculate initial average gain and loss
-      for (let i = 1; i <= period; i++) {
-        const change = prices[i] - prices[i - 1];
-        if (change >= 0) {
-          gains += change;
-        } else {
-          losses -= change;
-        }
-      }
-
-      let avgGain = gains / period;
-      let avgLoss = losses / period;
-
-      // Calculate RSI using smoothed averages
-      for (let i = period + 1; i < prices.length; i++) {
-        const change = prices[i] - prices[i - 1];
-        if (change >= 0) {
-          avgGain = (avgGain * (period - 1) + change) / period;
-          avgLoss = (avgLoss * (period - 1)) / period;
-        } else {
-          avgGain = (avgGain * (period - 1)) / period;
-          avgLoss = (avgLoss * (period - 1) - change) / period;
-        }
-      }
-
-      const rs = avgGain / avgLoss;
-      return 100 - 100 / (1 + rs);
-    }
+    const rsiValues = TI.RSI.calculate({ values: prices, period });
+    return rsiValues[rsiValues.length - 1] || 50;
   }
 
-  calculateMACD(prices: number[]): {
+  // Enhanced MACD calculation with TI library
+  calculateMACD(
+    prices: number[],
+    fastPeriod = 12,
+    slowPeriod = 26,
+    signalPeriod = 9
+  ): {
     macd: number;
     signal: number;
     histogram: number;
   } {
-    const shortPeriod = 12;
-    const longPeriod = 26;
-    const signalPeriod = 9;
-
-    if (prices.length < longPeriod) {
+    if (prices.length < slowPeriod) {
       return { macd: 0, signal: 0, histogram: 0 };
     }
 
-    try {
-      // Use technicalindicators library if available
-      const macdValues = TI.MACD.calculate({
-        values: prices,
-        fastPeriod: shortPeriod,
-        slowPeriod: longPeriod,
-        signalPeriod: signalPeriod,
-        SimpleMAOscillator: false,
-        SimpleMASignal: false,
-      });
+    const macdValues = TI.MACD.calculate({
+      values: prices,
+      fastPeriod,
+      slowPeriod,
+      signalPeriod,
+      SimpleMAOscillator: false,
+      SimpleMASignal: false,
+    });
 
-      const lastValue = macdValues[macdValues.length - 1];
-      if (lastValue) {
-        return {
-          macd: lastValue.MACD || 0,
-          signal: lastValue.signal || 0,
-          histogram: lastValue.histogram || 0,
-        };
-      }
-    } catch (error) {
-      // Fallback to manual calculation
-      console.warn('Using manual MACD calculation:', error);
+    const lastValue = macdValues[macdValues.length - 1];
+    if (lastValue) {
+      return {
+        macd: lastValue.MACD || 0,
+        signal: lastValue.signal || 0,
+        histogram: lastValue.histogram || 0,
+      };
     }
 
-    // Manual calculation fallback
-    const shortEMA = this.calculateEMA(prices, shortPeriod);
-    const longEMA = this.calculateEMA(prices, longPeriod);
-    const macdLine = shortEMA - longEMA;
-    const signalLine = this.calculateEMA([macdLine], signalPeriod);
-    const histogram = macdLine - signalLine;
+    return { macd: 0, signal: 0, histogram: 0 };
+  }
+
+  // Bollinger Bands calculation
+  calculateBollingerBands(
+    prices: number[],
+    period = 20,
+    stdDev = 2
+  ): {
+    upper: number;
+    middle: number;
+    lower: number;
+  } {
+    if (prices.length < period) {
+      const lastPrice = prices[prices.length - 1];
+      return { upper: lastPrice, middle: lastPrice, lower: lastPrice };
+    }
+
+    const bbValues = TI.BollingerBands.calculate({
+      period,
+      values: prices,
+      stdDev,
+    });
+
+    const lastValue = bbValues[bbValues.length - 1];
+    if (lastValue) {
+      return {
+        upper: lastValue.upper,
+        middle: lastValue.middle,
+        lower: lastValue.lower,
+      };
+    }
+
+    const lastPrice = prices[prices.length - 1];
+    return { upper: lastPrice, middle: lastPrice, lower: lastPrice };
+  }
+
+  // Stochastic oscillator
+  calculateStochastic(
+    highs: number[],
+    lows: number[],
+    closes: number[],
+    period = 14,
+    signalPeriod = 3
+  ): {
+    k: number;
+    d: number;
+  } {
+    if (highs.length < period || lows.length < period || closes.length < period) {
+      return { k: 50, d: 50 };
+    }
+
+    const stochValues = TI.Stochastic.calculate({
+      high: highs,
+      low: lows,
+      close: closes,
+      period,
+      signalPeriod,
+    });
+
+    const lastValue = stochValues[stochValues.length - 1];
+    if (lastValue && typeof lastValue.k === 'number' && typeof lastValue.d === 'number') {
+      return {
+        k: lastValue.k,
+        d: lastValue.d,
+      };
+    }
+
+    return { k: 50, d: 50 };
+  }
+
+  // Average True Range (ATR) for volatility
+  calculateATR(highs: number[], lows: number[], closes: number[], period = 14): number {
+    if (highs.length < period || lows.length < period || closes.length < period) {
+      return 0;
+    }
+
+    const atrValues = TI.ATR.calculate({
+      high: highs,
+      low: lows,
+      close: closes,
+      period,
+    });
+
+    return atrValues[atrValues.length - 1] || 0;
+  }
+
+  // Volume Weighted Average Price (VWAP)
+  calculateVWAP(highs: number[], lows: number[], closes: number[], volumes: number[]): number {
+    if (highs.length === 0) return 0;
+
+    let totalPV = 0;
+    let totalVolume = 0;
+
+    for (let i = 0; i < highs.length; i++) {
+      const typicalPrice = (highs[i] + lows[i] + closes[i]) / 3;
+      totalPV += typicalPrice * volumes[i];
+      totalVolume += volumes[i];
+    }
+
+    return totalVolume > 0 ? totalPV / totalVolume : closes[closes.length - 1];
+  }
+
+  // Ichimoku Cloud
+  calculateIchimoku(
+    highs: number[],
+    lows: number[],
+    period1 = 9,
+    period2 = 26,
+    period3 = 52
+  ): {
+    conversion: number;
+    base: number;
+    spanA: number;
+    spanB: number;
+  } {
+    if (highs.length < period3 || lows.length < period3) {
+      const lastPrice = (highs[highs.length - 1] + lows[lows.length - 1]) / 2;
+      return { conversion: lastPrice, base: lastPrice, spanA: lastPrice, spanB: lastPrice };
+    }
+
+    const ichimokuValues = TI.IchimokuCloud.calculate({
+      high: highs,
+      low: lows,
+      conversionPeriod: period1,
+      basePeriod: period2,
+      spanPeriod: period3,
+      displacement: 26,
+    });
+
+    const lastValue = ichimokuValues[ichimokuValues.length - 1];
+    if (lastValue) {
+      return {
+        conversion: lastValue.conversion,
+        base: lastValue.base,
+        spanA: lastValue.spanA,
+        spanB: lastValue.spanB,
+      };
+    }
+
+    const lastPrice = (highs[highs.length - 1] + lows[lows.length - 1]) / 2;
+    return { conversion: lastPrice, base: lastPrice, spanA: lastPrice, spanB: lastPrice };
+  }
+
+  // Calculate all technical indicators for a given price data
+  calculateAllIndicators(priceData: {
+    opens: number[];
+    highs: number[];
+    lows: number[];
+    closes: number[];
+    volumes: number[];
+  }): {
+    rsi: number;
+    macd: { macd: number; signal: number; histogram: number };
+    bollingerBands: { upper: number; middle: number; lower: number };
+    stochastic: { k: number; d: number };
+    atr: number;
+    vwap: number;
+    ichimoku: { conversion: number; base: number; spanA: number; spanB: number };
+    sma20: number;
+    sma50: number;
+    ema12: number;
+    ema26: number;
+  } {
+    const { closes, highs, lows, volumes } = priceData;
+
+    // Calculate SMAs
+    const sma20Values = TI.SMA.calculate({ period: 20, values: closes });
+    const sma50Values = TI.SMA.calculate({ period: 50, values: closes });
+
+    // Calculate EMAs
+    const ema12Values = TI.EMA.calculate({ period: 12, values: closes });
+    const ema26Values = TI.EMA.calculate({ period: 26, values: closes });
 
     return {
-      macd: macdLine,
-      signal: signalLine,
-      histogram,
+      rsi: this.calculateRSI(closes),
+      macd: this.calculateMACD(closes),
+      bollingerBands: this.calculateBollingerBands(closes),
+      stochastic: this.calculateStochastic(highs, lows, closes),
+      atr: this.calculateATR(highs, lows, closes),
+      vwap: this.calculateVWAP(highs, lows, closes, volumes),
+      ichimoku: this.calculateIchimoku(highs, lows),
+      sma20: sma20Values[sma20Values.length - 1] || closes[closes.length - 1],
+      sma50: sma50Values[sma50Values.length - 1] || closes[closes.length - 1],
+      ema12: ema12Values[ema12Values.length - 1] || closes[closes.length - 1],
+      ema26: ema26Values[ema26Values.length - 1] || closes[closes.length - 1],
     };
   }
 
-  calculateEMA(prices: number[], period: number): number {
-    if (prices.length < period) {
-      return prices[prices.length - 1];
+  // Helper to identify chart patterns
+  identifyPatterns(priceData: { highs: number[]; lows: number[]; closes: number[] }): {
+    bullishEngulfing: boolean;
+    bearishEngulfing: boolean;
+    doji: boolean;
+    hammer: boolean;
+    shootingStar: boolean;
+  } {
+    const { highs, lows, closes } = priceData;
+    const len = closes.length;
+
+    if (len < 2) {
+      return {
+        bullishEngulfing: false,
+        bearishEngulfing: false,
+        doji: false,
+        hammer: false,
+        shootingStar: false,
+      };
     }
 
-    const multiplier = 2 / (period + 1);
-    let ema = prices.slice(0, period).reduce((sum, price) => sum + price, 0) / period;
+    // Use TI library pattern recognition
+    const patterns = {
+      bullishEngulfing: TI.bullishengulfingpattern({
+        open: closes.slice(-2, -1),
+        high: highs.slice(-2),
+        low: lows.slice(-2),
+        close: closes.slice(-2),
+      }),
+      bearishEngulfing: TI.bearishengulfingpattern({
+        open: closes.slice(-2, -1),
+        high: highs.slice(-2),
+        low: lows.slice(-2),
+        close: closes.slice(-2),
+      }),
+      doji: TI.doji({
+        open: [closes[len - 2]],
+        high: [highs[len - 1]],
+        low: [lows[len - 1]],
+        close: [closes[len - 1]],
+      }),
+      hammer: TI.hammerpattern({
+        open: [closes[len - 2]],
+        high: [highs[len - 1]],
+        low: [lows[len - 1]],
+        close: [closes[len - 1]],
+      }),
+      shootingStar: TI.shootingstar({
+        open: [closes[len - 2]],
+        high: [highs[len - 1]],
+        low: [lows[len - 1]],
+        close: [closes[len - 1]],
+      }),
+    };
 
-    for (let i = period; i < prices.length; i++) {
-      ema = (prices[i] - ema) * multiplier + ema;
-    }
-
-    return ema;
+    return {
+      bullishEngulfing: patterns.bullishEngulfing || false,
+      bearishEngulfing: patterns.bearishEngulfing || false,
+      doji: patterns.doji || false,
+      hammer: patterns.hammer || false,
+      shootingStar: patterns.shootingStar || false,
+    };
   }
 
-  async trackTradeExecution(data: {
-    type: 'buy' | 'sell';
+  // Volatility calculation helper
+  calculateVolatility(prices: number[], period = 20): number {
+    if (prices.length < 2) return 0;
+
+    const returns = [];
+    for (let i = 1; i < prices.length; i++) {
+      returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+    }
+
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+    return Math.sqrt(variance);
+  }
+
+  // New method for recording trades
+  async recordTrade(trade: {
     tokenAddress: string;
-    amount: string;
-    signature: string;
+    type: 'BUY' | 'SELL';
+    amount: number;
+    price: number;
+    timestamp: number;
+    txSignature?: string;
   }): Promise<void> {
-    try {
-      const tradeData = {
-        id: uuidv4(),
-        ...data,
-        timestamp: new Date().toISOString(),
-      };
+    logger.info(`[${AnalyticsService.serviceType}] Recording trade:`, {
+      tokenAddress: trade.tokenAddress,
+      type: trade.type,
+      amount: trade.amount,
+      price: trade.price,
+    });
 
-      await this.runtime.setCache(`trade_execution:${tradeData.id}`, tradeData);
-
-      logger.info(`Trade execution tracked: ${data.type}`, {
-        tokenAddress: data.tokenAddress,
-        amount: data.amount,
-      });
-    } catch (error) {
-      console.log('Error tracking trade execution:', error);
-    }
+    // In a real implementation, this would save to database
+    // For now, just log the trade
   }
 
-  async addTradePerformance(data: TradePerformanceData, isSimulation: boolean): Promise<any> {
-    try {
-      const id = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-      const tradeData = {
-        id,
-        ...data,
-        isSimulation,
-        created_at: new Date().toISOString(),
-      };
+  // New method for updating trading metrics
+  async updateTradingMetrics(metrics: {
+    isTrading: boolean;
+    strategy?: string;
+    positions: number;
+    dailyPnL: number;
+    totalPnL: number;
+    lastUpdate: number;
+  }): Promise<void> {
+    logger.info(`[${AnalyticsService.serviceType}] Updating trading metrics:`, metrics);
 
-      await this.runtime.setCache(
-        `trade_performance:${data.token_address}:${data.buy_timeStamp}`,
-        tradeData
-      );
-
-      const allTradesKey = isSimulation ? 'all_simulation_trades' : 'all_trades';
-      const allTrades = (await this.runtime.getCache<string[]>(allTradesKey)) || [];
-      allTrades.push(`${data.token_address}:${data.buy_timeStamp}`);
-      await this.runtime.setCache(allTradesKey, allTrades);
-
-      await this.updateTokenStatistics(data.token_address, {
-        profit_usd: data.profit_usd,
-        profit_percent: data.profit_percent,
-        rapidDump: data.rapidDump,
-      });
-
-      return tradeData;
-    } catch (error) {
-      console.log('Error adding trade performance:', error);
-      throw error;
-    }
+    // In a real implementation, this would update a metrics store
+    // For now, just log the metrics
   }
 
-  private async updateTokenStatistics(
-    tokenAddress: string,
-    data: {
-      profit_usd: number;
-      profit_percent: number;
-      rapidDump: boolean;
-    }
-  ): Promise<void> {
-    try {
-      const stats = (await this.runtime.getCache<any>(`token_stats:${tokenAddress}`)) || {
-        trades: 0,
-        total_profit_usd: 0,
-        average_profit_percent: 0,
-        rapid_dumps: 0,
-      };
+  // Helper methods for PnL tracking
+  async getTodaysPnL(): Promise<number> {
+    // Would query from database
+    return 0;
+  }
 
-      stats.trades += 1;
-      stats.total_profit_usd += data.profit_usd;
-      stats.average_profit_percent =
-        (stats.average_profit_percent * (stats.trades - 1) + data.profit_percent) / stats.trades;
-      if (data.rapidDump) stats.rapid_dumps += 1;
+  async getTotalPnL(): Promise<number> {
+    // Would query from database
+    return 0;
+  }
 
-      await this.runtime.setCache(`token_stats:${tokenAddress}`, stats);
-    } catch (error) {
-      console.log('Error updating token statistics:', error);
-    }
+  getWinRate(): number {
+    // Would calculate from trade history
+    return 0;
   }
 }

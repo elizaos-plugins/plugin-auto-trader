@@ -26,7 +26,7 @@ export const PROVIDER_CONFIG = {
 
 // Add configuration for enabled chains
 export const CHAIN_CONFIG = {
-  SOLANA_ENABLED: false, // Can be controlled via settings
+  SOLANA_ENABLED: process.env.SOLANA_ENABLED === 'true', // Can be controlled via settings
   BASE_ENABLED: true, // Can be controlled via settings
 };
 

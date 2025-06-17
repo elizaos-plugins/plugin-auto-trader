@@ -7,7 +7,9 @@ export function validateSolanaAddress(address: string | undefined): boolean {
     // Handle Base (0x) addresses
     if (address.startsWith('0x')) {
       const isValidBase = /^0x[a-fA-F0-9]{40}$/.test(address);
-      logger.log(`Base address validation: ${address}`, { isValid: isValidBase });
+      logger.log(`Base address validation: ${address}`, {
+        isValid: isValidBase,
+      });
       return isValidBase;
     }
 

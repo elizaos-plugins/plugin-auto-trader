@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ExternalLink, Search } from 'lucide-react';
 import moment from 'moment';
-import Loader from './loader';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Input } from './ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import Loader from './loader.js';
+import { Badge } from './ui/badge.js';
+import { Button } from './ui/button.js';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
+import { Input } from './ui/input.js';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table.js';
 import React from 'react';
 
 export default function Tweets() {
